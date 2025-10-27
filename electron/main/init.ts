@@ -20,16 +20,16 @@ export function getMainWindow(): BrowserWindow | null {
 export async function checkToolInstalled() {
     return new Promise<PromiseReturnType>(async (resolve, reject) => {
         if (!(await isBinaryExists('uv'))) {
-            resolve({success: false, message: "uv doesn't exist"})
+            resolve({ success: false, message: "uv doesn't exist" })
             return
         }
 
         if (!(await isBinaryExists('bun'))) {
-            resolve({success: false, message: "Bun doesn't exist"})
+            resolve({ success: false, message: "Bun doesn't exist" })
             return
         }
 
-        resolve({success: true, message: "Tools exist already"})
+        resolve({ success: true, message: "Tools exist already" })
     })
 
 }
@@ -152,14 +152,55 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     if (setPort) {
         setPort(port);
     }
-
     const npmCacheDir = path.join(venvPath, '.npm-cache');
     if (!fs.existsSync(npmCacheDir)) {
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
 
+    // Read .env file and parse it into an object
+    let envFileContent = {};
+    try {
+        // Try multiple paths for .env file
+        let envPath: string;
+        
+        if (app.isPackaged) {
+            // In packaged app, .env is in resources/backend/.env
+            envPath = path.join(process.resourcesPath || '', 'backend', '.env');
+        } else {
+            // In development, .env is in project root
+            envPath = path.join(backendPath, '..', '.env');
+        }
+        
+        if (fs.existsSync(envPath)) {
+            const envContent = fs.readFileSync(envPath, 'utf-8');
+            log.info('Reading .env file from:', envPath);
+            
+            // Parse .env file content into an object
+            // Use \r?\n to handle both Windows and Unix line endings
+            const lines = envContent.split(/\r?\n/);
+            
+            envFileContent = lines
+                .filter(line => line.trim() && !line.trim().startsWith('#')) // Filter empty lines and comments
+                .reduce((acc, line) => {
+                    const equalIndex = line.indexOf('=');
+                    if (equalIndex > 0) {
+                        const key = line.substring(0, equalIndex).trim();
+                        const value = line.substring(equalIndex + 1).trim();
+                        if (key && value !== undefined) {
+                            acc[key] = value;
+                        }
+                    }
+                    return acc;
+                }, {} as Record<string, string>);
+        
+        } 
+    } catch (error) {
+        console.log('error reading .env file:', error)
+    }
+
     const env = {
         ...process.env,
+        ...envFileContent, // Merge environment variables from .env file
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         UV_PROJECT_ENVIRONMENT: venvPath,
